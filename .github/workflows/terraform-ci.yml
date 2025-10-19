@@ -1,0 +1,144 @@
+name: Terraform CI
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '**.tf'
+      - '**.tfvars'
+      - '.github/workflows/terraform-ci.yml'
+
+permissions:
+  id-token: write  
+  contents: read   
+  pull-requests: write 
+
+env:
+  # GCP Configuration
+  GKE_PROJECT: ${{ secrets.GKE_PROJECT }}
+  GKE_REGION: ${{ vars.GKE_REGION }}
+  
+jobs:
+  terraform-validation:
+    name: Terraform Plan
+    runs-on: ubuntu-latest
+    environment: production
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v2
+      with:
+        workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+        service_account: ${{ secrets.SA_EMAIL }}
+
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+
+    - name: Generate terraform.tfvars
+      run: |
+        # Generate terraform.tfvars by running the shared script
+        chmod +x .github/scripts/generate-tfvars.sh
+        ./.github/scripts/generate-tfvars.sh
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: "1.9.8"
+        terraform_wrapper: false
+
+    - name: Terraform Format Check
+      id: fmt
+      run: |
+        # Remove terraform.tfvars temporarily if it exists (generated at runtime)
+        if [ -f terraform.tfvars ]; then
+          mv terraform.tfvars terraform.tfvars.bak
+        fi
+        terraform fmt -check -recursive
+        # Restore terraform.tfvars if it was backed up
+        if [ -f terraform.tfvars.bak ]; then
+          mv terraform.tfvars.bak terraform.tfvars
+        fi
+      continue-on-error: true
+
+    - name: Terraform Init
+      id: init
+      run: terraform init
+    
+    - name: Terraform Validate
+      id: validate
+      run: terraform validate
+
+    - name: Terraform Plan
+      id: plan
+      run: |
+        terraform plan -input=false -no-color -out=tfplan 2>&1 | tee plan_output.txt
+        
+        # Check if plan contains changes
+        if grep -q "No changes" plan_output.txt; then
+          echo "has_changes=false" >> $GITHUB_OUTPUT
+          echo "✅ Terraform plan completed successfully - no changes"
+        elif grep -q "Plan:" plan_output.txt; then
+          echo "has_changes=true" >> $GITHUB_OUTPUT
+          echo "✅ Terraform plan completed successfully - changes detected"
+        else
+          echo "has_changes=false" >> $GITHUB_OUTPUT
+          echo "✅ Terraform plan completed successfully"
+        fi
+      continue-on-error: true
+
+    - name: Comment PR with Results
+      uses: actions/github-script@v7
+      if: github.event_name == 'pull_request'
+      with:
+        script: |
+          const fs = require('fs');
+          let planOutput = '';
+          try {
+            planOutput = fs.readFileSync('plan_output.txt', 'utf8');
+          } catch (err) {
+            planOutput = 'Plan output not available';
+          }
+          
+          // Truncate plan output if too long (GitHub has a comment size limit)
+          const maxLength = 60000;
+          if (planOutput.length > maxLength) {
+            planOutput = planOutput.substring(0, maxLength) + '\n\n... (output truncated)';
+          }
+          
+          const output = `## Terraform Validation Results 🔍
+          
+          #### Format Check 🎨 \`${{ steps.fmt.outcome }}\`
+          #### Validation ✔️ \`${{ steps.validate.outcome }}\`
+          #### Plan 📖 \`${{ steps.plan.outcome }}\`
+          #### Changes Detected: ${{ steps.plan.outputs.has_changes == 'true' && '✅ Yes' || '⚪ No' }}
+          
+          <details><summary>Show Plan Output</summary>
+          
+          \`\`\`terraform
+          ${planOutput}
+          \`\`\`
+          
+          </details>
+          
+          *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`, Working Directory: \`${{ github.workspace }}\`*`;
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: output
+          })
+
+    - name: Terraform Plan Status
+      if: steps.plan.outcome == 'failure'
+      run: exit 1
+
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Format | ${{ steps.fmt.outcome }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Init | ${{ steps.init.outcome }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Validate | ${{ steps.validate.outcome }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Plan | ${{ steps.plan.outcome }} |" >> $GITHUB_STEP_SUMMARY

@@ -1,0 +1,244 @@
+name: 'Terraform Deploy'
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - '*.md'
+      - '**/README.md'
+      - 'README*'
+      - 'docs/**'
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Action to perform'
+        required: true
+        default: 'apply'
+        type: choice
+        options:
+        - apply
+        - plan-only
+      commit_sha:
+        description: 'Commit SHA to apply (leave empty for latest)'
+        required: false
+        type: string
+
+env:
+  WIF_PROVIDER: ${{ secrets.WIF_PROVIDER }}
+  SA_EMAIL: ${{ secrets.SA_EMAIL }}
+  GKE_PROJECT: ${{ secrets.GKE_PROJECT }}
+  GKE_REGION: ${{ vars.GKE_REGION }}
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  terraform-plan:
+    name: 'Terraform Plan'
+    runs-on: ubuntu-latest
+    environment: production
+    # Run on push or manual dispatch
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (github.event.inputs.action == 'plan-only' || github.event.inputs.action == 'apply'))
+    outputs:
+      has_changes: ${{ steps.plan.outputs.has_changes }}
+      plan_artifact: ${{ steps.plan.outputs.plan_artifact }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: 'Authenticate to Google Cloud'
+      id: 'auth'
+      uses: 'google-github-actions/auth@v2'
+      with:
+        workload_identity_provider: '${{ env.WIF_PROVIDER }}'
+        service_account: '${{ env.SA_EMAIL }}'
+
+    - name: Generate terraform.tfvars
+      run: |
+        # Generate terraform.tfvars by running the shared script
+        chmod +x .github/scripts/generate-tfvars.sh
+        ./.github/scripts/generate-tfvars.sh
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: "1.9.8"
+        terraform_wrapper: false
+
+    - name: Terraform Format Check
+      id: fmt
+      run: |
+        # Remove terraform.tfvars temporarily if it exists (generated at runtime)
+        if [ -f terraform.tfvars ]; then
+          mv terraform.tfvars terraform.tfvars.bak
+        fi
+        terraform fmt -check -recursive
+        # Restore terraform.tfvars if it was backed up
+        if [ -f terraform.tfvars.bak ]; then
+          mv terraform.tfvars.bak terraform.tfvars
+        fi
+      continue-on-error: true
+
+    - name: Terraform Init
+      id: init
+      run: terraform init
+    
+    - name: Terraform Validate
+      id: validate
+      run: terraform validate
+
+    - name: Terraform Plan
+      id: plan
+      run: |
+        # Determine commit SHA for artifact naming
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ github.event.inputs.commit_sha }}" ]; then
+          COMMIT_SHA="${{ github.event.inputs.commit_sha }}"
+        else
+          COMMIT_SHA="${{ github.sha }}"
+        fi
+        echo "plan_artifact=terraform-plan-${COMMIT_SHA}" >> $GITHUB_OUTPUT
+        
+        terraform plan -input=false -no-color -out=tfplan | tee plan_output.txt
+        
+        # Check if plan contains changes
+        if grep -q "No changes" plan_output.txt; then
+          echo "has_changes=false" >> $GITHUB_OUTPUT
+          echo "✅ Terraform plan completed successfully - no changes"
+        elif grep -q "Plan:" plan_output.txt; then
+          echo "has_changes=true" >> $GITHUB_OUTPUT
+          echo "✅ Terraform plan completed successfully - changes detected"
+        else
+          echo "has_changes=false" >> $GITHUB_OUTPUT
+          echo "✅ Terraform plan completed successfully"
+        fi
+
+    - name: Upload Terraform Plan
+      if: steps.plan.outputs.has_changes == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ steps.plan.outputs.plan_artifact }}
+        path: |
+          tfplan
+          plan_output.txt
+          terraform.tfvars
+        retention-days: 5
+
+    - name: Upload Plan Summary
+      if: steps.plan.outputs.has_changes == 'true'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          const planOutput = fs.readFileSync('plan_output.txt', 'utf8');
+          
+          const output = `## Terraform Plan Results 📋
+          
+          **Status:** ✅ Plan completed successfully
+          **Changes Detected:** Yes
+          **Artifact:** ${{ steps.plan.outputs.plan_artifact }}
+          **Commit:** ${{ github.sha }}
+          
+          <details><summary>📖 View Plan Output</summary>
+          
+          \`\`\`terraform
+          ${planOutput}
+          \`\`\`
+          
+          </details>
+          
+          ---
+          
+          **Next Steps:**
+          🚀 Terraform Apply will run automatically in the next job
+          `;
+          
+          core.summary.addRaw(output);
+          await core.summary.write();
+
+  terraform-apply:
+    name: 'Terraform Apply'
+    runs-on: ubuntu-latest
+    needs: terraform-plan
+    environment: production  
+    if: |
+      needs.terraform-plan.outputs.has_changes == 'true' && (
+        github.event_name == 'push' ||
+        (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply')
+      )
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: 'Authenticate to Google Cloud'
+      id: 'auth'
+      uses: 'google-github-actions/auth@v2'
+      with:
+        workload_identity_provider: '${{ env.WIF_PROVIDER }}'
+        service_account: '${{ env.SA_EMAIL }}'
+
+    - name: Download Terraform Plan
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ needs.terraform-plan.outputs.plan_artifact }}
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: "1.9.8"
+        terraform_wrapper: false
+
+    - name: Terraform Init
+      run: terraform init
+
+    - name: Terraform Apply
+      run: |
+        echo "🚀 Applying Terraform changes..."
+        terraform apply -input=false -auto-approve tfplan
+        echo "✅ Terraform apply completed successfully"
+
+    - name: Notify Success
+      uses: actions/github-script@v7
+      if: success()
+      with:
+        script: |
+          core.summary.addRaw(`## Terraform Apply Results ✅
+          
+          **Status:** Successfully applied
+          **Commit:** ${{ github.sha }}
+          **Artifact:** ${{ needs.terraform-plan.outputs.plan_artifact }}
+          **Applied by:** ${{ github.actor }}
+          **Applied at:** ${new Date().toISOString()}
+          
+          All infrastructure changes have been successfully deployed!
+          `);
+          await core.summary.write();
+
+  # Job for when no changes are detected
+  no-changes:
+    name: 'No Changes'
+    runs-on: ubuntu-latest
+    needs: terraform-plan
+    if: (github.ref == 'refs/heads/main' && github.event_name == 'push' && needs.terraform-plan.outputs.has_changes == 'false') || (github.event_name == 'workflow_dispatch' && needs.terraform-plan.outputs.has_changes == 'false')
+    
+    steps:
+    - name: No Changes Message
+      run: |
+        echo "⚠️  No changes detected, skipping apply"
+        
+    - name: Update Summary
+      uses: actions/github-script@v7
+      with:
+        script: |
+          core.summary.addRaw(`## Terraform Plan Results ℹ️
+          
+          **Status:** ✅ Plan completed successfully
+          **Changes Detected:** No
+          **Action:** Skipped apply
+          
+          No infrastructure changes were detected in this commit.
+          `);
+          await core.summary.write();
