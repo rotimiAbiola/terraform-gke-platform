@@ -8,6 +8,26 @@ terraform {
       source  = "hashicorp/random"
       version = "~> 3.6"
     }
+    helm = {
+      source  = "hashicorp/helm"
+      version = "3.0.0"
+    }
+    kubernetes = {
+      source  = "hashicorp/kubernetes"
+      version = "2.36.0"
+    }
+    argocd = {
+      source  = "argoproj-labs/argocd"
+      version = "~> 7.0"
+    }
+    grafana = {
+      source  = "grafana/grafana"
+      version = "~> 4.1.0"
+    }
+    vault = {
+      source  = "hashicorp/vault"
+      version = "~> 4.4"
+    }
   }
 }
 
@@ -17,4 +37,33 @@ provider "google" {
 }
 
 provider "random" {
+}
+
+provider "helm" {
+  kubernetes = {
+    host                   = "https://${module.cluster.endpoint}"
+    token                  = data.google_client_config.default.access_token
+    cluster_ca_certificate = base64decode(module.cluster.ca_certificate)
+  }
+}
+
+provider "kubernetes" {
+  host                   = "https://${module.cluster.endpoint}"
+  token                  = data.google_client_config.default.access_token
+  cluster_ca_certificate = base64decode(module.cluster.ca_certificate)
+}
+
+provider "argocd" {
+  server_addr = "${argocd_url}:443"
+  insecure    = false
+  grpc_web    = true
+
+  username = var.argocd_username
+  password = var.argocd_password
+  # auth_token = var.argocd_auth_token
+}
+
+provider "vault" {
+  address = "https://vault.${domain_name}"
+  token   = var.vault_root_token
 }

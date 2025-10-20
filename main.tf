@@ -1,5 +1,23 @@
 data "google_client_config" "default" {}
 
+# Local computed values for better readability
+locals {
+  # Domain names for various services
+  monitoring_fqdn = "${var.monitoring_subdomain}.${var.domain_name}"
+  argocd_fqdn     = var.argocd_url != "" ? var.argocd_url : "${var.argocd_subdomain}.${var.domain_name}"
+  vault_fqdn      = "${var.vault_subdomain}.${var.domain_name}"
+
+  # GitHub organization (fallback to github_org variable)
+  argocd_github_org = var.argocd_github_org != "" ? var.argocd_github_org : var.github_org
+
+  # Common labels
+  common_labels = {
+    project     = var.project_id
+    environment = "production"
+    managed_by  = "terraform"
+  }
+}
+
 # VPC Module
 module "network" {
   source        = "./modules/network"
@@ -84,4 +102,135 @@ module "dns" {
   service_cname_records = var.service_cname_records
 
   depends_on = [module.database]
+}
+
+module "storage" {
+  source      = "./modules/storage"
+  project_id  = var.project_id
+  region      = var.region
+  bucket_name = var.bucket_name
+  environment = var.environment
+}
+
+# GCP KMS for Vault Auto-Unseal
+resource "google_kms_key_ring" "vault_unseal" {
+  count    = var.enable_vault ? 1 : 0
+  name     = "vault-unseal"
+  location = var.region
+}
+
+resource "google_kms_crypto_key" "vault_key" {
+  count           = var.enable_vault ? 1 : 0
+  name            = "vault-key"
+  key_ring        = google_kms_key_ring.vault_unseal[0].id
+  rotation_period = "2592000s" # 30 days
+
+  purpose = "ENCRYPT_DECRYPT"
+
+  version_template {
+    algorithm = "GOOGLE_SYMMETRIC_ENCRYPTION"
+  }
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+# Service Account for Vault to access KMS
+resource "google_service_account" "vault_kms" {
+  count        = var.enable_vault ? 1 : 0
+  account_id   = "vault-kms"
+  display_name = "Vault KMS Service Account"
+  description  = "Service account for Vault to access GCP KMS for auto-unseal"
+}
+
+# IAM binding to allow Vault SA to use KMS key
+resource "google_kms_crypto_key_iam_binding" "vault_kms" {
+  count         = var.enable_vault ? 1 : 0
+  crypto_key_id = google_kms_crypto_key.vault_key[0].id
+  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
+
+  members = [
+    "serviceAccount:${google_service_account.vault_kms[0].email}",
+  ]
+}
+
+# Additional IAM binding to allow Vault SA to read KMS key metadata
+resource "google_kms_crypto_key_iam_binding" "vault_kms_viewer" {
+  count         = var.enable_vault ? 1 : 0
+  crypto_key_id = google_kms_crypto_key.vault_key[0].id
+  role          = "roles/cloudkms.viewer"
+
+  members = [
+    "serviceAccount:${google_service_account.vault_kms[0].email}",
+  ]
+}
+
+# Workload Identity binding for Vault service account
+resource "google_service_account_iam_binding" "vault_workload_identity" {
+  count              = var.enable_vault ? 1 : 0
+  service_account_id = google_service_account.vault_kms[0].name
+  role               = "roles/iam.workloadIdentityUser"
+
+  members = [
+    "serviceAccount:${var.project_id}.svc.id.goog[vault/vault]",
+  ]
+}
+
+# GCP KMS for GKE etcd Encryption at Rest
+resource "google_kms_key_ring" "gke_etcd" {
+  name     = "gke-etcd-encryption"
+  location = var.region
+}
+
+resource "google_kms_crypto_key" "gke_etcd_key" {
+  name            = "gke-etcd-key"
+  key_ring        = google_kms_key_ring.gke_etcd.id
+  rotation_period = "7776000s" # 90 days
+
+  purpose = "ENCRYPT_DECRYPT"
+
+  version_template {
+    algorithm = "GOOGLE_SYMMETRIC_ENCRYPTION"
+  }
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+# IAM binding to allow GKE service account to use etcd encryption key
+resource "google_kms_crypto_key_iam_binding" "gke_etcd_key" {
+  crypto_key_id = google_kms_crypto_key.gke_etcd_key.id
+  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
+
+  members = [
+    "serviceAccount:service-${data.google_project.current.number}@container-engine-robot.iam.gserviceaccount.com",
+  ]
+}
+
+# Data source to get current project number
+data "google_project" "current" {}
+
+# Helm Module - Deploy NGINX Gateway
+module "helm" {
+  source = "./modules/helm"
+
+  cluster_endpoint       = module.cluster.endpoint
+  cluster_ca_certificate = module.cluster.ca_certificate
+
+  # Add depends_on to ensure GKE is fully ready
+  depends_on = [
+    module.cluster
+  ]
+
+  grafana_domain   = local.monitoring_fqdn
+  grafana_root_url = "https://${local.monitoring_fqdn}"
+
+  argocd_version              = "8.1.0"
+  argocd_url                  = local.argocd_fqdn
+  argocd_github_client_id     = var.argocd_github_client_id
+  argocd_github_client_secret = var.argocd_github_client_secret
+  argocd_github_org           = local.argocd_github_org
+  argocd_server_secret_key    = var.argocd_server_secret_key
 }

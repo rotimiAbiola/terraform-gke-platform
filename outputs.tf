@@ -39,6 +39,16 @@ output "dns_configuration" {
   }
 }
 
+# Service URLs
+output "service_urls" {
+  description = "URLs for accessing deployed services"
+  value = {
+    argocd     = "https://${local.argocd_fqdn}"
+    monitoring = "https://${local.monitoring_fqdn}"
+    vault      = var.enable_vault ? "https://${local.vault_fqdn}" : null
+  }
+}
+
 # IAP Connection Guide
 output "cluster_access_guide" {
   description = "Guide for accessing the private GKE cluster via IAP"
@@ -67,3 +77,17 @@ Database: ${module.dns.database_fqdn} (private IP only)
 EOT
 }
 
+output "helm_deployments" {
+  description = "Status of Helm deployments"
+  value = {
+    nginx_gateway_fabric = module.helm.nginx_gateway_status
+  }
+}
+
+output "storage" {
+  description = "Storage configuration details"
+  value = {
+    gcs_bucket            = module.storage.gcs_bucket
+    service_account_email = module.storage.service_account_email
+  }
+}
