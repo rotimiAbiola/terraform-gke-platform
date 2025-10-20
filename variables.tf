@@ -9,6 +9,12 @@ variable "region" {
   default     = "europe-west1"
 }
 
+variable "environment" {
+  description = "Environment name (e.g., dev, staging, production)"
+  type        = string
+  default     = "production"
+}
+
 variable "network_name" {
   description = "Name for the VPC network"
   type        = string
@@ -262,4 +268,183 @@ variable "zone" {
   description = "The GCP zone for zonal resources"
   type        = string
   default     = "europe-west1-b"
+}
+
+# Domain Configuration
+variable "domain_name" {
+  description = "Base domain name for all services (e.g., rtmdemos.name.ng)"
+  type        = string
+  default     = "rtmdemos.name.ng"
+}
+
+variable "monitoring_subdomain" {
+  description = "Subdomain for Grafana/monitoring (will create monitoring.{domain_name})"
+  type        = string
+  default     = "monitoring"
+}
+
+variable "argocd_subdomain" {
+  description = "Subdomain for ArgoCD (will create argocd.{domain_name})"
+  type        = string
+  default     = "argocd"
+}
+
+variable "vault_subdomain" {
+  description = "Subdomain for Vault (will create vault.{domain_name})"
+  type        = string
+  default     = "vault"
+}
+
+# GitHub/Repository Configuration
+variable "github_org" {
+  description = "GitHub organization or username for repository integrations"
+  type        = string
+  default     = ""
+}
+
+variable "enable_vault" {
+  description = "Enable HashiCorp Vault deployment for secret management"
+  type        = bool
+  default     = true
+}
+
+# Storage Variables
+variable "bucket_name" {
+  description = "Name of the GCS bucket for application storage"
+  type        = string
+  default     = "k8s-platform-prod-db"
+}
+
+# ArgoCD
+variable "argocd_username" {
+  description = "ArgoCD username for basic authentication"
+  type        = string
+  default     = "admin"
+}
+
+variable "argocd_password" {
+  description = "ArgoCD password for basic authentication"
+  type        = string
+  sensitive   = true
+  default     = "" # Set this in terraform.tfvars
+}
+
+variable "argocd_url" {
+  description = "Full domain name for ArgoCD (defaults to argocd.{domain_name})"
+  type        = string
+  default     = ""
+}
+
+# GitHub OAuth Variables for ArgoCD (Dex integration)
+variable "argocd_github_client_id" {
+  description = "GitHub OAuth App Client ID for ArgoCD Dex authentication"
+  type        = string
+  default     = ""
+}
+
+variable "argocd_github_client_secret" {
+  description = "GitHub OAuth App Client Secret for ArgoCD Dex authentication"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "argocd_github_org" {
+  description = "GitHub organization for ArgoCD access (uses github_org if not specified)"
+  type        = string
+  default     = ""
+}
+
+variable "argocd_server_secret_key" {
+  description = "ArgoCD server secret key for JWT signing and session management"
+  type        = string
+  sensitive   = true
+}
+
+# GitHub App Variables for ArgoCD Applications
+variable "github_app_id" {
+  description = "GitHub App ID for ArgoCD private repository access"
+  type        = string
+  default     = ""
+}
+
+variable "github_app_installation_id" {
+  description = "GitHub App Installation ID for ArgoCD private repository access"
+  type        = string
+  default     = ""
+}
+
+variable "github_app_private_key" {
+  description = "GitHub App Private Key (PEM format) for ArgoCD private repository access"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "platform_app_of_apps_repo_url" {
+  description = "Repository URL for the platform app-of-apps configuration"
+  type        = string
+  default     = ""
+}
+
+variable "platform_applications" {
+  description = "Map of platform applications to deploy via ArgoCD"
+  type = map(object({
+    name            = string
+    repo_url        = string
+    path            = string
+    target_revision = optional(string, "main")
+
+    destination = object({
+      server    = optional(string, "https://kubernetes.default.svc")
+      namespace = string
+    })
+
+    sync_policy = optional(object({
+      automated = optional(object({
+        prune       = optional(bool, true)
+        self_heal   = optional(bool, true)
+        allow_empty = optional(bool, false)
+      }))
+      sync_options = optional(list(string), ["CreateNamespace=true"])
+      retry = optional(object({
+        limit = optional(number, 5)
+        backoff = optional(object({
+          duration     = optional(string, "5s")
+          factor       = optional(number, 2)
+          max_duration = optional(string, "3m")
+        }))
+      }))
+    }))
+
+    helm = optional(object({
+      values      = optional(string)
+      parameters  = optional(map(string))
+      value_files = optional(list(string))
+    }))
+
+    kustomize = optional(object({
+      name_prefix   = optional(string)
+      name_suffix   = optional(string)
+      images        = optional(list(string))
+      common_labels = optional(map(string))
+    }))
+
+    annotations = optional(map(string), {})
+  }))
+  default = {}
+}
+
+variable "platform_namespace" {
+  description = "The target namespace for platform workloads"
+  type        = string
+  default     = "platform"
+}
+
+# HashiCorp Vault Variables
+variable "vault_root_token" {
+  description = "Root token for Vault authentication and configuration"
+  type        = string
+  sensitive   = true
+  default     = ""
 }

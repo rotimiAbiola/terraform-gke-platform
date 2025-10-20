@@ -18,6 +18,11 @@ env:
   # GCP Configuration
   GKE_PROJECT: ${{ secrets.GKE_PROJECT }}
   GKE_REGION: ${{ vars.GKE_REGION }}
+  # Domain Configuration
+  DOMAIN_NAME: ${{ vars.DOMAIN_NAME }}
+  GH_ORG: ${{ vars.GH_ORG }}
+  # Sensitive values
+  ARGOCD_SERVER_SECRET_KEY: ${{ secrets.ARGOCD_SERVER_SECRET_KEY }}
   
 jobs:
   terraform-validation:
