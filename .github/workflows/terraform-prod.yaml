@@ -1,14 +1,14 @@
 name: 'Terraform Deploy'
 
 on:
-  push:
-    branches:
-      - main
-    paths-ignore:
-      - '*.md'
-      - '**/README.md'
-      - 'README*'
-      - 'docs/**'
+  # push:
+  #   branches:
+  #     - main
+  #   paths-ignore:
+  #     - '*.md'
+  #     - '**/README.md'
+  #     - 'README*'
+  #     - 'docs/**'
   workflow_dispatch:
     inputs:
       action:

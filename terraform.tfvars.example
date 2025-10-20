@@ -1,0 +1,105 @@
+# =============================================================================
+# GKE Platform Infrastructure - Terraform Variables Example
+# =============================================================================
+# Copy this file to terraform.tfvars and fill in your values
+# cp terraform.tfvars.example terraform.tfvars
+#
+# IMPORTANT: Never commit terraform.tfvars with sensitive data to git!
+# Add terraform.tfvars to .gitignore if it contains secrets.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Project Configuration
+# -----------------------------------------------------------------------------
+project_id = "random-project-471611-k0"
+region     = "europe-west1"
+zone       = "europe-west1-b"
+
+# -----------------------------------------------------------------------------
+# Network Configuration
+# -----------------------------------------------------------------------------
+network_name = "k8s-platform-vpc"
+
+# -----------------------------------------------------------------------------
+# GKE Cluster Configuration
+# -----------------------------------------------------------------------------
+cluster_name = "k8s-platform-cluster"
+
+# Master authorized networks (empty = private, VPC-only access)
+# Add your IP or VPN CIDR to allow external access
+master_authorized_networks = []
+# Example with VPN access:
+# master_authorized_networks = [
+#   {
+#     cidr_block   = "10.0.0.0/20"
+#     display_name = "VPC Internal"
+#   }
+# ]
+
+# -----------------------------------------------------------------------------
+# PostgreSQL Database Configuration
+# -----------------------------------------------------------------------------
+postgres_instance_name     = "k8s-platform-postgres"
+postgres_version           = "POSTGRES_17"
+postgres_tier              = "db-custom-2-7680"  # 2 vCPUs, 7.5GB RAM
+postgres_availability_type = "REGIONAL"          # High availability
+postgres_disk_size         = 20                  # GB
+
+# Database users (will create secrets in Secret Manager)
+application_db_username = "application"
+
+# Databases to create
+databases = ["product-service", "user-service", "order-service"]
+
+# Database users to create (passwords stored in Secret Manager)
+users = ["product-user", "user-user", "order-user"]
+
+# Backup configuration
+backup_region = "europe-west4"  # Different region for disaster recovery
+
+# -----------------------------------------------------------------------------
+# DNS Configuration
+# -----------------------------------------------------------------------------
+dns_zone_name   = "platform-internal"
+dns_zone_domain = "platform.internal."
+database_dns_name = "postgresql.platform.internal."
+
+# -----------------------------------------------------------------------------
+# OpenVPN Access Server Configuration (Optional)
+# -----------------------------------------------------------------------------
+# Enable VPN for secure access to private GKE cluster and database
+enable_vpn = false  # Set to true to enable
+
+# VPN domain configuration
+vpn_domain        = "gateway.rtmdemos.name.ng"
+vpn_subdomain     = "gateway"
+letsencrypt_email = "goingtocloud49@gmail.com"
+
+# -----------------------------------------------------------------------------
+# Cloudflare DNS Automation (Required if enable_vpn = true)
+# -----------------------------------------------------------------------------
+# OPTION 1: Set in terraform.tfvars (NOT RECOMMENDED - keep secure!)
+# cloudflare_api_token = "your-cloudflare-api-token-here"
+# cloudflare_zone_id   = "your-cloudflare-zone-id-here"
+
+# OPTION 2: Set via environment variable (RECOMMENDED)
+# export TF_VAR_cloudflare_api_token="your-api-token"
+# Then only set zone_id in terraform.tfvars:
+cloudflare_zone_id = ""  # Set your Cloudflare Zone ID here if using VPN
+
+# OPTION 3: For CI/CD (GitHub Actions)
+# Add CLOUDFLARE_API_TOKEN as GitHub secret
+# Workflow will set: TF_VAR_cloudflare_api_token=${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+# -----------------------------------------------------------------------------
+# Security Notes
+# -----------------------------------------------------------------------------
+# 1. Never commit terraform.tfvars with sensitive data (API tokens, passwords)
+# 2. Use environment variables (TF_VAR_*) for secrets in CI/CD
+# 3. Database passwords are auto-generated and stored in Secret Manager
+# 4. Add terraform.tfvars to .gitignore if it contains sensitive values
+# 5. Use separate tfvars files for different environments:
+#    - terraform.tfvars.dev
+#    - terraform.tfvars.staging
+#    - terraform.tfvars.prod
+# =============================================================================
