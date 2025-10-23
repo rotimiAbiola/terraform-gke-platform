@@ -26,7 +26,6 @@ output "postgres_instance" {
   sensitive = true
 }
 
-# DNS outputs
 output "dns_configuration" {
   description = "DNS configuration details"
   value = {
@@ -39,7 +38,6 @@ output "dns_configuration" {
   }
 }
 
-# Service URLs
 output "service_urls" {
   description = "URLs for accessing deployed services"
   value = {
@@ -49,7 +47,6 @@ output "service_urls" {
   }
 }
 
-# IAP Connection Guide
 output "cluster_access_guide" {
   description = "Guide for accessing the private GKE cluster via IAP"
   value       = <<-EOT
@@ -90,4 +87,15 @@ output "storage" {
     gcs_bucket            = module.storage.gcs_bucket
     service_account_email = module.storage.service_account_email
   }
+}
+
+output "platform_applications" {
+  description = "Platform applications deployment information"
+  value = var.github_app_id != "" ? {
+    project_name       = module.platform_applications[0].project_name
+    app_of_apps_name   = module.platform_applications[0].app_of_apps_name
+    applications       = module.platform_applications[0].applications
+    created_namespaces = module.platform_applications[0].created_namespaces
+    github_secret_name = module.platform_applications[0].github_app_secret_name
+  } : null
 }

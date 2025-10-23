@@ -1,0 +1,32 @@
+# ArgoCD Apps Directory
+#
+# This directory contains ArgoCD Application definitions for the App of Apps pattern.
+# Each YAML file represents an application that ArgoCD will manage.
+#
+# File naming convention: {service-name}.yaml
+# 
+# When you add new applications:
+# 1. Create a new YAML file following the existing pattern
+# 2. Set appropriate sync wave (1-5) based on dependencies
+# 3. Configure the source repository URL and path
+# 4. Set the destination namespace
+# 5. Commit and push changes to trigger ArgoCD sync
+
+# Temporary files
+*.tmp
+*.temp
+
+# Backup files
+*.bak
+*.backup
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db

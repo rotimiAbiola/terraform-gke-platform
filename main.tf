@@ -234,3 +234,175 @@ module "helm" {
   argocd_github_org           = local.argocd_github_org
   argocd_server_secret_key    = var.argocd_server_secret_key
 }
+
+# Vault Configuration Module - Configure Vault for Kubernetes authentication
+module "vault_config" {
+  count  = var.enable_vault && var.vault_root_token != "" ? 1 : 0
+  source = "./modules/vault-config"
+
+  kubernetes_host        = "https://kubernetes.default.svc.cluster.local:443"
+  allowed_k8s_namespaces = ["platform", "vault", "default", "monitoring", "external-secrets"]
+
+  depends_on = [module.helm]
+}
+
+# External Secrets Infrastructure - Create namespace, service account, and RBAC
+module "external_secrets" {
+  count  = var.enable_vault ? 1 : 0
+  source = "./modules/external-secrets"
+
+  namespace        = "external-secrets"
+  vault_server_url = "http://vault.vault.svc.cluster.local:8200"
+  vault_mount_path = "secret"
+  vault_role       = "k8s-apps"
+
+  # Target namespaces where ESO can create secrets
+  target_namespaces = ["platform"]
+
+  depends_on = [
+    module.vault_config
+  ]
+}
+
+# External Secrets Operator ArgoCD Application - Deploy ESO Helm chart
+module "external_secrets_operator" {
+  count  = var.enable_vault ? 1 : 0
+  source = "./modules/argocd-helm-app"
+
+  application_name = "external-secrets-operator"
+  chart_name       = "external-secrets"
+  chart_version    = "0.10.4"
+  repository_url   = "https://charts.external-secrets.io"
+  namespace        = "external-secrets"
+  create_namespace = false # Namespace is created by external_secrets module
+
+  values = yamlencode({
+    replicaCount = 2
+
+    serviceAccount = {
+      create = false
+      name   = module.external_secrets[0].service_account_name
+    }
+
+    # Tolerations for spot nodes
+    tolerations = [
+      {
+        key      = "cloud.google.com/gke-spot"
+        operator = "Equal"
+        value    = "true"
+        effect   = "NoSchedule"
+      },
+      {
+        operator = "Exists"
+        effect   = "NoSchedule"
+      },
+      {
+        operator = "Exists"
+        effect   = "NoExecute"
+      }
+    ]
+
+    webhook = {
+      replicaCount = 2
+      tolerations = [
+        {
+          key      = "cloud.google.com/gke-spot"
+          operator = "Equal"
+          value    = "true"
+          effect   = "NoSchedule"
+        },
+        {
+          operator = "Exists"
+          effect   = "NoSchedule"
+        },
+        {
+          operator = "Exists"
+          effect   = "NoExecute"
+        }
+      ]
+    }
+
+    certController = {
+      replicaCount = 2
+      tolerations = [
+        {
+          key      = "cloud.google.com/gke-spot"
+          operator = "Equal"
+          value    = "true"
+          effect   = "NoSchedule"
+        },
+        {
+          operator = "Exists"
+          effect   = "NoSchedule"
+        },
+        {
+          operator = "Exists"
+          effect   = "NoExecute"
+        }
+      ]
+    }
+  })
+
+  depends_on = [
+    module.external_secrets
+  ]
+}
+
+# ArgoCD Applications Module - Platform Applications
+module "platform_applications" {
+  count  = var.github_app_id != "" ? 1 : 0
+  source = "./modules/argocd-applications"
+
+  # Project configuration
+  project_name        = "platform"
+  project_description = "Platform Applications"
+
+  # GitHub organization (uses github_org variable)
+  github_org = var.github_org
+
+  # GitHub App authentication
+  github_app_id              = var.github_app_id
+  github_app_installation_id = var.github_app_installation_id
+  github_app_private_key     = var.github_app_private_key
+
+  # App of apps repository (optional - leave empty to manage directly with Terraform)
+  app_of_apps_repo_url = var.platform_app_of_apps_repo_url
+  app_of_apps_path     = "argocd-apps"
+  app_of_apps_revision = "main"
+
+  # Application namespaces to create automatically
+  application_namespaces = [
+    var.platform_namespace
+  ]
+
+  # Source repositories are automatically computed from github_org
+
+  # Individual applications (empty when using app of apps pattern)
+  applications = var.platform_applications
+
+  # Default sync policy
+  sync_policy = {
+    automated = {
+      prune       = true
+      self_heal   = true
+      allow_empty = false
+    }
+    sync_options = ["CreateNamespace=true", "ServerSideApply=true"]
+    retry = {
+      limit = 5
+      backoff = {
+        duration     = "5s"
+        factor       = 2
+        max_duration = "3m"
+      }
+    }
+  }
+
+  # CRITICAL: Ensure vault and external secrets are deployed first
+  depends_on = [
+    module.helm,
+    module.vault_config,
+    module.external_secrets,
+    module.external_secrets_operator
+  ]
+}

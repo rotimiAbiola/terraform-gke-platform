@@ -54,7 +54,7 @@ provider "kubernetes" {
 }
 
 provider "argocd" {
-  server_addr = "${argocd_url}:443"
+  server_addr = var.argocd_url != "" ? "${var.argocd_url}:443" : "${var.argocd_subdomain}.${var.domain_name}:443"
   insecure    = false
   grpc_web    = true
 
@@ -64,6 +64,6 @@ provider "argocd" {
 }
 
 provider "vault" {
-  address = "https://vault.${domain_name}"
+  address = "https://${var.vault_subdomain}.${var.domain_name}"
   token   = var.vault_root_token
 }
