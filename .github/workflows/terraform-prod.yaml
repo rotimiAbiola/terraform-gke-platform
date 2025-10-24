@@ -29,11 +29,15 @@ env:
   SA_EMAIL: ${{ secrets.SA_EMAIL }}
   GKE_PROJECT: ${{ secrets.GKE_PROJECT }}
   GKE_REGION: ${{ vars.GKE_REGION }}
-  # Domain Configuration
   DOMAIN_NAME: ${{ vars.DOMAIN_NAME }}
   GH_ORG: ${{ vars.GH_ORG }}
-  # Sensitive values
   ARGOCD_SERVER_SECRET_KEY: ${{ secrets.ARGOCD_SERVER_SECRET_KEY }}
+  ENABLE_VAULT: ${{ vars.ENABLE_VAULT }}
+  VAULT_ROOT_TOKEN: ${{ secrets.VAULT_ROOT_TOKEN }}
+  GH_APP_ID: ${{ secrets.GH_APP_ID }}
+  GH_APP_INSTALLATION_ID: ${{ secrets.GH_APP_INSTALLATION_ID }}
+  GH_APP_PRIVATE_KEY: ${{ secrets.GH_APP_PRIVATE_KEY }}
+  PLATFORM_APP_OF_APPS_REPO_URL: ${{ vars.PLATFORM_APP_OF_APPS_REPO_URL }}
 
 permissions:
   id-token: write
@@ -44,7 +48,6 @@ jobs:
     name: 'Terraform Plan'
     runs-on: ubuntu-latest
     environment: production
-    # Run on push or manual dispatch
     if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (github.event.inputs.action == 'plan-only' || github.event.inputs.action == 'apply'))
     outputs:
       has_changes: ${{ steps.plan.outputs.has_changes }}
@@ -222,7 +225,6 @@ jobs:
           `);
           await core.summary.write();
 
-  # Job for when no changes are detected
   no-changes:
     name: 'No Changes'
     runs-on: ubuntu-latest
