@@ -83,15 +83,56 @@ database_dns_name = "postgresql.platform.internal."
 # ArgoCD URL (defaults to argocd.{domain_name} if not specified)
 # argocd_url = "argocd.yourdomain.com"
 
-# GitHub OAuth for ArgoCD (optional)
+# REQUIRED: ArgoCD server secret key for JWT signing and session management
+# Generate with: openssl rand -base64 32
+argocd_server_secret_key = ""  # REQUIRED - 32+ character random string
+
+# GitHub OAuth for ArgoCD (optional - for SSO login)
 argocd_github_client_id     = ""  # GitHub OAuth App Client ID
 argocd_github_client_secret = ""  # GitHub OAuth App Client Secret (keep secure!)
 argocd_github_org           = ""  # GitHub org for ArgoCD access (uses github_org if empty)
+
+# GitHub App for ArgoCD Applications (optional - for private repo access)
+# Create a GitHub App with repository read access
+github_app_id              = ""  # GitHub App ID
+github_app_installation_id = ""  # GitHub App Installation ID
+github_app_private_key     = ""  # GitHub App Private Key (PEM format, multiline)
+
+# App of Apps Configuration (optional - for GitOps-style app management)
+# Leave empty to manage applications directly with Terraform
+platform_app_of_apps_repo_url = ""  # e.g., "https://github.com/your-org/platform-config"
+
+# Platform Applications (optional - for direct Terraform management)
+# Leave empty if using app-of-apps pattern
+# platform_applications = {}
+# Example:
+# platform_applications = {
+#   "my-app" = {
+#     name            = "my-app"
+#     repo_url        = "https://github.com/your-org/my-app"
+#     path            = "k8s/"
+#     target_revision = "main"
+#     destination = {
+#       namespace = "platform"
+#     }
+#     sync_policy = {
+#       automated = {
+#         prune     = true
+#         self_heal = true
+#       }
+#     }
+#   }
+# }
 
 # -----------------------------------------------------------------------------
 # Vault Configuration
 # -----------------------------------------------------------------------------
 enable_vault = true  # Set to false to disable Vault deployment
+
+# Vault root token (REQUIRED if enable_vault = true)
+# Generate with: openssl rand -base64 32
+# This is used for initial Vault configuration only
+vault_root_token = ""  # Keep this VERY secure! Used for Vault configuration
 
 # -----------------------------------------------------------------------------
 # Storage Configuration

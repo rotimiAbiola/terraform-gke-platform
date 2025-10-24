@@ -15,14 +15,17 @@ permissions:
   pull-requests: write 
 
 env:
-  # GCP Configuration
   GKE_PROJECT: ${{ secrets.GKE_PROJECT }}
   GKE_REGION: ${{ vars.GKE_REGION }}
-  # Domain Configuration
   DOMAIN_NAME: ${{ vars.DOMAIN_NAME }}
   GH_ORG: ${{ vars.GH_ORG }}
-  # Sensitive values
   ARGOCD_SERVER_SECRET_KEY: ${{ secrets.ARGOCD_SERVER_SECRET_KEY }}
+  ENABLE_VAULT: ${{ vars.ENABLE_VAULT }}
+  VAULT_ROOT_TOKEN: ${{ secrets.VAULT_ROOT_TOKEN }}
+  GH_APP_ID: ${{ secrets.GH_APP_ID }}
+  GH_APP_INSTALLATION_ID: ${{ secrets.GH_APP_INSTALLATION_ID }}
+  GH_APP_PRIVATE_KEY: ${{ secrets.GH_APP_PRIVATE_KEY }}
+  PLATFORM_APP_OF_APPS_REPO_URL: ${{ vars.PLATFORM_APP_OF_APPS_REPO_URL }}
   
 jobs:
   terraform-validation:

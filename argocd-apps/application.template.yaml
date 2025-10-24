@@ -1,0 +1,39 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: YOUR_APP_NAME  # REPLACE: Name of your application
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: YOUR_APP_NAME  # REPLACE: Name of your application
+    app.kubernetes.io/part-of: platform
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  project: platform
+  source:
+    repoURL: https://github.com/YOUR_GITHUB_ORG/YOUR_APP_REPO  # REPLACE: Your GitHub org and repo name
+    targetRevision: main  # REPLACE: Target branch (main, production, dev, etc.)
+    path: k8s/  # REPLACE: Path to Kubernetes manifests in your repo
+    kustomize:
+      commonLabels:
+        app.kubernetes.io/version: latest
+        environment: production  # REPLACE: Environment (production, staging, dev)
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: platform  # REPLACE: Target namespace for deployment
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+  revisionHistoryLimit: 10
