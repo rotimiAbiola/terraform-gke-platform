@@ -448,3 +448,196 @@ variable "vault_root_token" {
   sensitive   = true
   default     = ""
 }
+
+# Monitoring Variables
+variable "grafana_domain" {
+  description = "Domain for Grafana server"
+  type        = string
+  default     = "monitoring.rtmdemos.name.ng"
+}
+
+variable "grafana_root_url" {
+  description = "Root URL for Grafana server (used in alerts and notifications)"
+  type        = string
+  default     = "https://monitoring.rtmdemos.name.ng"
+}
+
+# GitHub OAuth Variables for Grafana
+variable "github_client_id" {
+  description = "GitHub OAuth App Client ID for Grafana authentication"
+  type        = string
+  default     = ""
+}
+
+variable "github_client_secret" {
+  description = "GitHub OAuth App Client Secret for Grafana authentication"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "github_allowed_orgs" {
+  description = "List of GitHub organizations allowed to access Grafana"
+  type        = list(string)
+  default     = []
+}
+
+variable "github_team_ids" {
+  description = "List of GitHub team IDs that should have admin access to Grafana"
+  type        = list(string)
+  default     = []
+}
+
+variable "github_allowed_domains" {
+  description = "List of email domains allowed to access Grafana via GitHub OAuth (e.g., ['example.com', 'company.org'])"
+  type        = list(string)
+  default     = []
+}
+
+# Grafana Alerting Variables
+variable "platform_apps" {
+  description = "List of platform applications to monitor with Grafana alerting"
+  type        = list(string)
+  default = [
+    "storefront-gateway",
+    "storefront-app",
+    "product-service",
+    "order-service",
+    "cart-service",
+    "review-service"
+  ]
+}
+
+variable "grafana_service_account_token" {
+  description = "Grafana service account token for Terraform provider (for alert management)"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "slack_webhook_url" {
+  description = "Slack webhook URL for Grafana alerts"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "slack_channel" {
+  description = "Slack channel for platform alerts"
+  type        = string
+  default     = "#alerts"
+}
+
+variable "grafana_admin_password" {
+  description = "Admin password for Grafana"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "enable_grafana_alerting" {
+  description = "Enable Grafana alerting module for platform apps"
+  type        = bool
+  default     = true
+}
+
+# ========================================
+# ArgoCD Slack Notifications
+# ========================================
+
+variable "argocd_slack_webhook_deployments" {
+  description = "Slack webhook URL for ArgoCD deployment notifications (stored in Secret Manager)"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "argocd_slack_webhook_health" {
+  description = "Slack webhook URL for ArgoCD health/alerts notifications (stored in Secret Manager)"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "enable_argocd_notifications" {
+  description = "Enable ArgoCD Slack notifications via External Secrets Operator"
+  type        = bool
+  default     = false
+}
+
+################################################################################
+# PostgreSQL Monitoring Variables
+################################################################################
+
+variable "enable_postgres_monitoring" {
+  description = "Enable PostgreSQL monitoring with postgres_exporter"
+  type        = bool
+  default     = true
+}
+
+variable "postgres_monitoring_username" {
+  description = "Username for PostgreSQL monitoring user"
+  type        = string
+  default     = "monitoring"
+}
+
+variable "postgres_slow_query_threshold_ms" {
+  description = "Threshold in milliseconds for slow query monitoring"
+  type        = number
+  default     = 1000 # 1 second
+}
+
+variable "enable_postgres_servicemonitor" {
+  description = "Enable ServiceMonitor for postgres_exporter (requires prometheus-operator CRDs)"
+  type        = bool
+  default     = false # Set to true after initial deployment
+}
+
+variable "enable_vault_servicemonitor" {
+  description = "Enable ServiceMonitor for Vault metrics (requires prometheus-operator CRDs)"
+  type        = bool
+  default     = false # Set to true after initial deployment
+}
+
+variable "enable_cluster_secret_store" {
+  description = "Enable ClusterSecretStore for External Secrets Operator (requires ESO CRDs)"
+  type        = bool
+  default     = false # Set to true after initial deployment
+}
+
+variable "enable_golden_signals_alerts" {
+  description = "Enable Golden Signals alerts (latency, errors, saturation, traffic) - requires application instrumentation"
+  type        = bool
+  default     = false # Set to true after applications expose metrics
+}
+
+################################################################################
+# Gateway API Variables
+################################################################################
+
+variable "enable_gateway" {
+  description = "Enable Kubernetes Gateway API resources (Gateway, HTTPRoutes, ReferenceGrants)"
+  type        = bool
+  default     = false # Set to true after NGINX Gateway Fabric is deployed
+}
+
+variable "gateway_class_name" {
+  description = "The Gateway class name to use (nginx, istio, etc.)"
+  type        = string
+  default     = "nginx"
+}
+
+variable "tls_secret_name" {
+  description = "Name of the TLS secret for HTTPS termination on Gateway"
+  type        = string
+  default     = "k8s-platform-tls"
+}
+
+variable "max_body_size" {
+  description = "Maximum request body size for file uploads through Gateway"
+  type        = string
+  default     = "150m"
+}
+
+
+

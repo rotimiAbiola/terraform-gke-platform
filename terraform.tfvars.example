@@ -135,6 +135,25 @@ enable_vault = true  # Set to false to disable Vault deployment
 vault_root_token = ""  # Keep this VERY secure! Used for Vault configuration
 
 # -----------------------------------------------------------------------------
+# Gateway API Configuration
+# -----------------------------------------------------------------------------
+# Gateway API provides unified HTTP/HTTPS ingress for platform services
+# Requires NGINX Gateway Fabric to be deployed first (module.helm)
+
+# Enable Gateway API resources (default false for initial deployment)
+# Set to true after helm deployments are complete
+enable_gateway = false  # Phase 1: false, Phase 2: true
+
+# Gateway configuration (usually defaults are fine)
+gateway_class_name = "nginx"            # Gateway class (nginx, istio, etc.)
+tls_secret_name    = "k8s-platform-tls"  # TLS cert secret name
+max_body_size      = "150m"             # Max upload size for large files
+
+# Note: Services and routes are configured in main.tf
+# To add new services, edit the services list in main.tf module "gateway_api"
+# Each service automatically gets HTTP→HTTPS redirect + HTTPS route
+
+# -----------------------------------------------------------------------------
 # Storage Configuration
 # -----------------------------------------------------------------------------
 bucket_name = "your-storage-bucket-name"
@@ -152,3 +171,5 @@ bucket_name = "your-storage-bucket-name"
 #    - terraform.tfvars.staging
 #    - terraform.tfvars.prod
 # =============================================================================
+
+

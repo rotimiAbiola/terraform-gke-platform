@@ -19,49 +19,51 @@ resource "kubernetes_service_account" "vault_auth_sa" {
   depends_on = [kubernetes_namespace.external_secrets]
 }
 
-# NOTE: ClusterSecretStore creation is commented out to prevent chicken-and-egg issues during initial deployment.
-# The kubernetes_manifest resource requires ESO CRDs to exist, but they're only installed after ESO is deployed.
-# 
-# OPTION 1: Uncomment this block after initial deployment when ESO CRDs are installed
-# OPTION 2: Apply the manifest manually: kubectl apply -f manifests/vault-cluster-secret-store.yaml
-# OPTION 3: Manage via ArgoCD after cluster is provisioned
-#
-# resource "kubernetes_manifest" "vault_secret_store" {
-#   manifest = {
-#     apiVersion = "external-secrets.io/v1beta1"
-#     kind       = "ClusterSecretStore"
-#
-#     metadata = {
-#       name = var.cluster_secret_store_name
-#     }
-#
-#     spec = {
-#       provider = {
-#         vault = {
-#           server  = var.vault_server_url
-#           path    = var.vault_mount_path
-#           version = var.vault_kv_version
-#
-#           auth = {
-#             kubernetes = {
-#               mountPath = var.vault_auth_mount_path
-#               role      = var.vault_role
-#               serviceAccountRef = {
-#                 name      = kubernetes_service_account.vault_auth_sa.metadata[0].name
-#                 namespace = var.namespace
-#                 audiences = [var.vault_audience]
-#               }
-#             }
-#           }
-#         }
-#       }
-#     }
-#   }
-#
-#   computed_fields = ["metadata.uid", "metadata.resourceVersion"]
-#
-#   depends_on = [kubernetes_service_account.vault_auth_sa]
-# }
+# ===========================================================================
+# ClusterSecretStore for Vault Integration
+# ===========================================================================
+# NOTE: This requires External Secrets Operator CRDs to be installed first.
+# Set enable_cluster_secret_store=false for initial deployment,
+# then enable after ESO helm chart is deployed.
+# ===========================================================================
+resource "kubernetes_manifest" "vault_secret_store" {
+  count = var.enable_cluster_secret_store ? 1 : 0
+
+  manifest = {
+    apiVersion = "external-secrets.io/v1beta1"
+    kind       = "ClusterSecretStore"
+
+    metadata = {
+      name = var.cluster_secret_store_name
+    }
+
+    spec = {
+      provider = {
+        vault = {
+          server  = var.vault_server_url
+          path    = var.vault_mount_path
+          version = var.vault_kv_version
+
+          auth = {
+            kubernetes = {
+              mountPath = var.vault_auth_mount_path
+              role      = var.vault_role
+              serviceAccountRef = {
+                name      = kubernetes_service_account.vault_auth_sa.metadata[0].name
+                namespace = var.namespace
+                audiences = [var.vault_audience]
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  computed_fields = ["metadata.uid", "metadata.resourceVersion"]
+
+  depends_on = [kubernetes_service_account.vault_auth_sa]
+}
 
 resource "kubernetes_role" "eso_management" {
   metadata {

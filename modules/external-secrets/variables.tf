@@ -62,3 +62,8 @@ variable "vault_kv_version" {
     error_message = "Vault KV version must be either 'v1' or 'v2'."
   }
 }
+variable "enable_cluster_secret_store" {
+  description = "Enable ClusterSecretStore creation (requires ESO CRDs)"
+  type        = bool
+  default     = false
+}

@@ -99,3 +99,25 @@ output "platform_applications" {
     github_secret_name = module.platform_applications[0].github_app_secret_name
   } : null
 }
+
+output "postgres_monitoring" {
+  description = "PostgreSQL monitoring configuration"
+  value = var.enable_postgres_monitoring ? {
+    monitoring_user    = module.postgres_monitoring[0].monitoring_user
+    exporter_service   = module.postgres_monitoring[0].postgres_exporter_service
+    metrics_endpoint   = module.postgres_monitoring[0].postgres_exporter_endpoint
+    password_secret_id = module.postgres_monitoring[0].monitoring_password_secret_id
+  } : null
+}
+
+output "gateway_api" {
+  description = "Gateway API configuration and service URLs"
+  value = var.enable_gateway ? {
+    gateway_name               = module.gateway_api.gateway_name
+    gateway_namespace          = module.gateway_api.gateway_namespace
+    service_urls               = module.gateway_api.service_urls
+    enabled_services           = module.gateway_api.enabled_services
+    reference_grant_namespaces = module.gateway_api.reference_grant_namespaces
+  } : null
+}
+

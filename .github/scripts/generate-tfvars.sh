@@ -102,5 +102,25 @@ platform_app_of_apps_repo_url = "${PLATFORM_APP_OF_APPS_REPO_URL}"
 EOF
 fi
 
+# Add CRD-dependent feature flags (default disabled for initial deployment)
+cat >> terraform.tfvars <<EOF
+
+# ===========================================================================
+# CRD-Dependent Features (Enable after initial deployment)
+# ===========================================================================
+
+# ServiceMonitor for Vault metrics (requires prometheus-operator CRDs)
+enable_vault_servicemonitor = ${ENABLE_VAULT_SERVICEMONITOR:-false}
+
+# ServiceMonitor for PostgreSQL metrics (requires prometheus-operator CRDs)
+enable_postgres_servicemonitor = ${ENABLE_POSTGRES_SERVICEMONITOR:-false}
+
+# ClusterSecretStore for External Secrets Operator (requires ESO CRDs)
+enable_cluster_secret_store = ${ENABLE_CLUSTER_SECRET_STORE:-false}
+
+# Golden Signals alerts for applications (requires app instrumentation)
+enable_golden_signals_alerts = ${ENABLE_GOLDEN_SIGNALS_ALERTS:-false}
+EOF
+
 echo "✅ terraform.tfvars generated successfully"
 exit 0
