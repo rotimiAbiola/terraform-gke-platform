@@ -1,0 +1,481 @@
+# Custom PostgreSQL queries for postgres_exporter
+# These queries expose important performance and health metrics
+
+# PostgreSQL settings (max_connections)
+pg_settings:
+  query: |
+    SELECT
+      name as setting_name,
+      setting::float as setting_value,
+      unit
+    FROM pg_settings
+    WHERE name IN ('max_connections', 'shared_buffers', 'work_mem', 'maintenance_work_mem')
+  metrics:
+    - setting_name:
+        usage: "LABEL"
+        description: "PostgreSQL setting name"
+    - setting_value:
+        usage: "GAUGE"
+        description: "Setting value"
+    - unit:
+        usage: "LABEL"
+        description: "Setting unit"
+
+# Current connection count
+pg_stat_database_numbackends:
+  query: |
+    SELECT
+      datname as database,
+      numbackends as connections
+    FROM pg_stat_database
+    WHERE datname NOT IN ('template0', 'template1', 'postgres', 'cloudsqladmin')
+  metrics:
+    - database:
+        usage: "LABEL"
+        description: "Database name"
+    - connections:
+        usage: "GAUGE"
+        description: "Number of active connections to this database"
+
+# Long-running queries (queries taking longer than threshold)
+pg_long_running_queries:
+  query: |
+    SELECT
+      datname as database,
+      usename as user,
+      application_name,
+      state,
+      EXTRACT(EPOCH FROM (now() - query_start)) as duration_seconds,
+      COUNT(*) as query_count
+    FROM pg_stat_activity
+    WHERE state != 'idle'
+      AND query_start IS NOT NULL
+      AND (now() - query_start) > interval '5 seconds'
+      AND query NOT LIKE '%pg_stat_activity%'
+      AND datname NOT IN ('cloudsqladmin')
+    GROUP BY datname, usename, application_name, state, query_start
+  metrics:
+    - database:
+        usage: "LABEL"
+        description: "Database name"
+    - user:
+        usage: "LABEL"
+        description: "User running the query"
+    - application_name:
+        usage: "LABEL"
+        description: "Application name"
+    - state:
+        usage: "LABEL"
+        description: "Query state"
+    - duration_seconds:
+        usage: "GAUGE"
+        description: "Query duration in seconds"
+    - query_count:
+        usage: "GAUGE"
+        description: "Number of long-running queries"
+
+# Slow queries (from pg_stat_statements if available)
+pg_slow_queries:
+  query: |
+    SELECT
+      queryid,
+      COALESCE(datname, 'unknown') as database,
+      COALESCE(usename, 'unknown') as user,
+      calls,
+      total_exec_time,
+      mean_exec_time,
+      max_exec_time,
+      rows
+    FROM pg_stat_statements
+    JOIN pg_database ON pg_stat_statements.dbid = pg_database.oid
+    JOIN pg_user ON pg_stat_statements.userid = pg_user.usesysid
+    WHERE mean_exec_time > 1000  -- queries averaging more than 1 second
+      AND datname NOT IN ('cloudsqladmin')
+    ORDER BY mean_exec_time DESC
+    LIMIT 50
+  metrics:
+    - queryid:
+        usage: "LABEL"
+        description: "Query ID hash"
+    - database:
+        usage: "LABEL"
+        description: "Database name"
+    - user:
+        usage: "LABEL"
+        description: "User executing the query"
+    - calls:
+        usage: "COUNTER"
+        description: "Number of times executed"
+    - total_exec_time:
+        usage: "COUNTER"
+        description: "Total execution time in milliseconds"
+    - mean_exec_time:
+        usage: "GAUGE"
+        description: "Mean execution time in milliseconds"
+    - max_exec_time:
+        usage: "GAUGE"
+        description: "Maximum execution time in milliseconds"
+    - rows:
+        usage: "COUNTER"
+        description: "Total number of rows affected"
+
+# Connection pool usage
+pg_connection_pool:
+  query: |
+    SELECT
+      datname as database,
+      COUNT(*) as connections,
+      COUNT(*) FILTER (WHERE state = 'active') as active,
+      COUNT(*) FILTER (WHERE state = 'idle') as idle,
+      COUNT(*) FILTER (WHERE state = 'idle in transaction') as idle_in_transaction,
+      COUNT(*) FILTER (WHERE wait_event_type IS NOT NULL) as waiting
+    FROM pg_stat_activity
+    WHERE datname IS NOT NULL
+      AND datname NOT IN ('cloudsqladmin')
+    GROUP BY datname
+  metrics:
+    - database:
+        usage: "LABEL"
+        description: "Database name"
+    - connections:
+        usage: "GAUGE"
+        description: "Total connections to database"
+    - active:
+        usage: "GAUGE"
+        description: "Active connections"
+    - idle:
+        usage: "GAUGE"
+        description: "Idle connections"
+    - idle_in_transaction:
+        usage: "GAUGE"
+        description: "Idle connections in transaction (potential lock holders)"
+    - waiting:
+        usage: "GAUGE"
+        description: "Connections waiting on locks or I/O"
+
+# Database size and growth
+pg_database_size:
+  query: |
+    SELECT
+      datname as database,
+      pg_database_size(datname) as size_bytes,
+      numbackends as connections,
+      xact_commit as commits,
+      xact_rollback as rollbacks,
+      blks_read as blocks_read,
+      blks_hit as blocks_hit,
+      tup_returned as tuples_returned,
+      tup_fetched as tuples_fetched,
+      tup_inserted as tuples_inserted,
+      tup_updated as tuples_updated,
+      tup_deleted as tuples_deleted
+    FROM pg_stat_database
+    WHERE datname NOT IN ('template0', 'template1', 'postgres', 'cloudsqladmin')
+  metrics:
+    - database:
+        usage: "LABEL"
+        description: "Database name"
+    - size_bytes:
+        usage: "GAUGE"
+        description: "Database size in bytes"
+    - connections:
+        usage: "GAUGE"
+        description: "Number of backends connected to this database"
+    - commits:
+        usage: "COUNTER"
+        description: "Number of transactions committed"
+    - rollbacks:
+        usage: "COUNTER"
+        description: "Number of transactions rolled back"
+    - blocks_read:
+        usage: "COUNTER"
+        description: "Number of disk blocks read"
+    - blocks_hit:
+        usage: "COUNTER"
+        description: "Number of times disk blocks were found in cache"
+    - tuples_returned:
+        usage: "COUNTER"
+        description: "Number of rows returned by queries"
+    - tuples_fetched:
+        usage: "COUNTER"
+        description: "Number of rows fetched by queries"
+    - tuples_inserted:
+        usage: "COUNTER"
+        description: "Number of rows inserted"
+    - tuples_updated:
+        usage: "COUNTER"
+        description: "Number of rows updated"
+    - tuples_deleted:
+        usage: "COUNTER"
+        description: "Number of rows deleted"
+
+# Table bloat and statistics
+pg_table_bloat:
+  query: |
+    SELECT
+      schemaname as schema,
+      relname as table,
+      pg_total_relation_size(schemaname||'.'||relname) as total_bytes,
+      pg_relation_size(schemaname||'.'||relname) as table_bytes,
+      pg_total_relation_size(schemaname||'.'||relname) - pg_relation_size(schemaname||'.'||relname) as index_bytes,
+      n_tup_ins as inserts,
+      n_tup_upd as updates,
+      n_tup_del as deletes,
+      n_live_tup as live_tuples,
+      n_dead_tup as dead_tuples,
+      CASE WHEN n_live_tup > 0 THEN (n_dead_tup::float / n_live_tup::float) * 100 ELSE 0 END as dead_tuple_percent,
+      last_vacuum,
+      last_autovacuum,
+      last_analyze,
+      last_autoanalyze
+    FROM pg_stat_user_tables
+    WHERE n_dead_tup > 0
+    ORDER BY n_dead_tup DESC
+    LIMIT 100
+  metrics:
+    - schema:
+        usage: "LABEL"
+        description: "Schema name"
+    - table:
+        usage: "LABEL"
+        description: "Table name"
+    - total_bytes:
+        usage: "GAUGE"
+        description: "Total size including indexes in bytes"
+    - table_bytes:
+        usage: "GAUGE"
+        description: "Table size in bytes"
+    - index_bytes:
+        usage: "GAUGE"
+        description: "Index size in bytes"
+    - inserts:
+        usage: "COUNTER"
+        description: "Number of rows inserted"
+    - updates:
+        usage: "COUNTER"
+        description: "Number of rows updated"
+    - deletes:
+        usage: "COUNTER"
+        description: "Number of rows deleted"
+    - live_tuples:
+        usage: "GAUGE"
+        description: "Estimated number of live rows"
+    - dead_tuples:
+        usage: "GAUGE"
+        description: "Estimated number of dead rows"
+    - dead_tuple_percent:
+        usage: "GAUGE"
+        description: "Percentage of dead tuples (bloat indicator)"
+
+# Index usage and efficiency
+pg_index_usage:
+  query: |
+    SELECT
+      schemaname as schema,
+      relname as table,
+      indexrelname as index,
+      idx_scan as scans,
+      idx_tup_read as tuples_read,
+      idx_tup_fetch as tuples_fetched,
+      pg_relation_size(indexrelid) as size_bytes
+    FROM pg_stat_user_indexes
+    ORDER BY idx_scan ASC
+    LIMIT 100
+  metrics:
+    - schema:
+        usage: "LABEL"
+        description: "Schema name"
+    - table:
+        usage: "LABEL"
+        description: "Table name"
+    - index:
+        usage: "LABEL"
+        description: "Index name"
+    - scans:
+        usage: "COUNTER"
+        description: "Number of index scans initiated on this index"
+    - tuples_read:
+        usage: "COUNTER"
+        description: "Number of index entries returned by scans"
+    - tuples_fetched:
+        usage: "COUNTER"
+        description: "Number of live table rows fetched by simple index scans"
+    - size_bytes:
+        usage: "GAUGE"
+        description: "Index size in bytes"
+
+# Locks and blocking queries
+pg_locks:
+  query: |
+    SELECT
+      datname as database,
+      locktype,
+      mode,
+      COUNT(*) as lock_count,
+      COUNT(*) FILTER (WHERE granted = false) as waiting_locks
+    FROM pg_locks
+    JOIN pg_database ON pg_locks.database = pg_database.oid
+    WHERE datname IS NOT NULL
+      AND datname NOT IN ('cloudsqladmin')
+    GROUP BY datname, locktype, mode
+  metrics:
+    - database:
+        usage: "LABEL"
+        description: "Database name"
+    - locktype:
+        usage: "LABEL"
+        description: "Type of lock"
+    - mode:
+        usage: "LABEL"
+        description: "Lock mode"
+    - lock_count:
+        usage: "GAUGE"
+        description: "Number of locks"
+    - waiting_locks:
+        usage: "GAUGE"
+        description: "Number of locks waiting to be granted"
+
+# Cache hit ratio
+pg_cache_hit_ratio:
+  query: |
+    SELECT
+      datname as database,
+      CASE
+        WHEN blks_hit + blks_read = 0 THEN 100
+        ELSE (blks_hit::float / (blks_hit + blks_read)::float) * 100
+      END as cache_hit_ratio
+    FROM pg_stat_database
+    WHERE datname NOT IN ('template0', 'template1', 'postgres', 'cloudsqladmin')
+  metrics:
+    - database:
+        usage: "LABEL"
+        description: "Database name"
+    - cache_hit_ratio:
+        usage: "GAUGE"
+        description: "Buffer cache hit ratio percentage (should be > 95%)"
+
+# Transaction wraparound monitoring
+pg_transaction_wraparound:
+  query: |
+    SELECT
+      datname as database,
+      age(datfrozenxid) as transaction_age,
+      2147483647 - age(datfrozenxid) as transactions_until_wraparound,
+      CASE
+        WHEN age(datfrozenxid) > 1000000000 THEN 'critical'
+        WHEN age(datfrozenxid) > 500000000 THEN 'warning'
+        ELSE 'ok'
+      END as status
+    FROM pg_database
+    WHERE datname NOT IN ('template0', 'template1', 'postgres', 'cloudsqladmin')
+  metrics:
+    - database:
+        usage: "LABEL"
+        description: "Database name"
+    - transaction_age:
+        usage: "GAUGE"
+        description: "Age of oldest transaction ID"
+    - transactions_until_wraparound:
+        usage: "GAUGE"
+        description: "Transactions remaining until wraparound"
+    - status:
+        usage: "LABEL"
+        description: "Wraparound risk status"
+
+# Vacuum and analyze statistics
+pg_vacuum_stats:
+  query: |
+    SELECT
+      schemaname as schema,
+      relname as table,
+      EXTRACT(EPOCH FROM (now() - last_vacuum)) as seconds_since_last_vacuum,
+      EXTRACT(EPOCH FROM (now() - last_autovacuum)) as seconds_since_last_autovacuum,
+      EXTRACT(EPOCH FROM (now() - last_analyze)) as seconds_since_last_analyze,
+      EXTRACT(EPOCH FROM (now() - last_autoanalyze)) as seconds_since_last_autoanalyze,
+      vacuum_count,
+      autovacuum_count,
+      analyze_count,
+      autoanalyze_count
+    FROM pg_stat_user_tables
+    ORDER BY greatest(
+      COALESCE(EXTRACT(EPOCH FROM (now() - last_vacuum)), 0),
+      COALESCE(EXTRACT(EPOCH FROM (now() - last_autovacuum)), 0)
+    ) DESC
+    LIMIT 50
+  metrics:
+    - schema:
+        usage: "LABEL"
+        description: "Schema name"
+    - table:
+        usage: "LABEL"
+        description: "Table name"
+    - seconds_since_last_vacuum:
+        usage: "GAUGE"
+        description: "Seconds since last manual vacuum"
+    - seconds_since_last_autovacuum:
+        usage: "GAUGE"
+        description: "Seconds since last autovacuum"
+    - seconds_since_last_analyze:
+        usage: "GAUGE"
+        description: "Seconds since last manual analyze"
+    - seconds_since_last_autoanalyze:
+        usage: "GAUGE"
+        description: "Seconds since last autoanalyze"
+    - vacuum_count:
+        usage: "COUNTER"
+        description: "Number of manual vacuums"
+    - autovacuum_count:
+        usage: "COUNTER"
+        description: "Number of autovacuums"
+    - analyze_count:
+        usage: "COUNTER"
+        description: "Number of manual analyzes"
+    - autoanalyze_count:
+        usage: "COUNTER"
+        description: "Number of autoanalyzes"
+
+# Checkpoint and WAL statistics (PostgreSQL 17+ compatible)
+pg_checkpoints:
+  query: |
+    SELECT
+      num_timed as checkpoints_timed,
+      num_requested as checkpoints_requested,
+      write_time as checkpoint_write_time,
+      sync_time as checkpoint_sync_time,
+      buffers_written as buffers_checkpoint
+    FROM pg_stat_checkpointer
+  metrics:
+    - checkpoints_timed:
+        usage: "COUNTER"
+        description: "Number of scheduled checkpoints"
+    - checkpoints_requested:
+        usage: "COUNTER"
+        description: "Number of requested checkpoints (should be low)"
+    - checkpoint_write_time:
+        usage: "COUNTER"
+        description: "Total time spent writing checkpoint files in milliseconds"
+    - checkpoint_sync_time:
+        usage: "COUNTER"
+        description: "Total time spent syncing checkpoint files in milliseconds"
+    - buffers_checkpoint:
+        usage: "COUNTER"
+        description: "Buffers written during checkpoints"
+
+# Background writer statistics (PostgreSQL 17+)
+pg_bgwriter:
+  query: |
+    SELECT
+      buffers_clean,
+      buffers_backend,
+      buffers_alloc
+    FROM pg_stat_bgwriter
+  metrics:
+    - buffers_clean:
+        usage: "COUNTER"
+        description: "Buffers written by background writer"
+    - buffers_backend:
+        usage: "COUNTER"
+        description: "Buffers written directly by backends"
+    - buffers_alloc:
+        usage: "COUNTER"
+        description: "Buffers allocated"

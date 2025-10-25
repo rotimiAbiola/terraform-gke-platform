@@ -1,0 +1,249 @@
+# PostgreSQL Alert Rules for Grafana
+
+groups:
+  - name: postgresql_performance
+    interval: 1m
+    rules:
+      # High connection usage
+      - alert: PostgreSQLHighConnections
+        expr: |
+          (sum by (instance) (pg_stat_database_numbackends{datname!~"template.*|postgres"}) 
+          / 
+          pg_settings_max_connections) * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+          component: database
+          type: performance
+        annotations:
+          summary: "PostgreSQL connection usage > 80%"
+          description: "PostgreSQL instance {{ $labels.instance }} is using {{ $value | humanize }}% of max connections"
+          runbook_url: "https://github.com/rotimiAbiola/terraform-gke-platform/blob/main/docs/runbooks/postgres-high-connections.md"
+
+      # Critical connection usage
+      - alert: PostgreSQLCriticalConnections
+        expr: |
+          (sum by (instance) (pg_stat_database_numbackends{datname!~"template.*|postgres"}) 
+          / 
+          pg_settings_max_connections) * 100 > 95
+        for: 2m
+        labels:
+          severity: critical
+          component: database
+          type: performance
+        annotations:
+          summary: "PostgreSQL connection usage > 95% - CRITICAL"
+          description: "PostgreSQL instance {{ $labels.instance }} is using {{ $value | humanize }}% of max connections. Connections may start failing!"
+
+  - name: postgresql_queries
+    interval: 1m
+    rules:
+      # Too many long-running queries
+      - alert: PostgreSQLTooManyLongRunningQueries
+        expr: pg_long_running_queries_query_count > 10
+        for: 5m
+        labels:
+          severity: warning
+          component: database
+          type: performance
+        annotations:
+          summary: "Too many long-running queries"
+          description: "Database {{ $labels.database }} has {{ $value }} queries running longer than 5 seconds"
+
+      # Slow query average execution time
+      - alert: PostgreSQLSlowQueriesDetected
+        expr: pg_slow_queries_mean_exec_time > 5000  # 5 seconds
+        for: 10m
+        labels:
+          severity: warning
+          component: database
+          type: performance
+        annotations:
+          summary: "Slow queries detected (avg > 5s)"
+          description: "Query {{ $labels.queryid }} in database {{ $labels.database }} has mean execution time of {{ $value | humanize }}ms"
+
+  - name: postgresql_health
+    interval: 1m
+    rules:
+      # Low cache hit ratio
+      - alert: PostgreSQLLowCacheHitRatio
+        expr: pg_cache_hit_ratio_cache_hit_ratio < 95
+        for: 15m
+        labels:
+          severity: warning
+          component: database
+          type: performance
+        annotations:
+          summary: "PostgreSQL cache hit ratio < 95%"
+          description: "Database {{ $labels.database }} cache hit ratio is {{ $value | humanize }}%. Consider increasing shared_buffers."
+
+      # High table bloat
+      - alert: PostgreSQLHighTableBloat
+        expr: pg_table_bloat_dead_tuple_percent > 20
+        for: 1h
+        labels:
+          severity: warning
+          component: database
+          type: maintenance
+        annotations:
+          summary: "High table bloat detected"
+          description: "Table {{ $labels.schema }}.{{ $labels.table }} has {{ $value | humanize }}% dead tuples. Vacuum needed."
+
+      # Critical table bloat
+      - alert: PostgreSQLCriticalTableBloat
+        expr: pg_table_bloat_dead_tuple_percent > 40
+        for: 30m
+        labels:
+          severity: critical
+          component: database
+          type: maintenance
+        annotations:
+          summary: "CRITICAL table bloat detected"
+          description: "Table {{ $labels.schema }}.{{ $labels.table }} has {{ $value | humanize }}% dead tuples. Immediate vacuum required!"
+
+  - name: postgresql_vacuum
+    interval: 5m
+    rules:
+      # Vacuum not running for too long
+      - alert: PostgreSQLVacuumNotRunning
+        expr: pg_vacuum_stats_seconds_since_last_autovacuum > 604800  # 7 days
+        for: 1h
+        labels:
+          severity: warning
+          component: database
+          type: maintenance
+        annotations:
+          summary: "Table not vacuumed in 7 days"
+          description: "Table {{ $labels.schema }}.{{ $labels.table }} last autovacuum was {{ $value | humanizeDuration }} ago"
+
+  - name: postgresql_locks
+    interval: 30s
+    rules:
+      # Too many waiting locks (potential deadlock)
+      - alert: PostgreSQLHighWaitingLocks
+        expr: pg_locks_waiting_locks > 10
+        for: 5m
+        labels:
+          severity: warning
+          component: database
+          type: performance
+        annotations:
+          summary: "High number of waiting locks"
+          description: "Database {{ $labels.database }} has {{ $value }} locks waiting to be granted. Potential deadlock situation."
+
+      # Critical lock wait
+      - alert: PostgreSQLCriticalLockWait
+        expr: pg_locks_waiting_locks > 50
+        for: 2m
+        labels:
+          severity: critical
+          component: database
+          type: performance
+        annotations:
+          summary: "CRITICAL: Too many waiting locks"
+          description: "Database {{ $labels.database }} has {{ $value }} locks waiting. Application performance severely impacted!"
+
+  - name: postgresql_wraparound
+    interval: 1h
+    rules:
+      # Transaction wraparound warning
+      - alert: PostgreSQLTransactionWraparoundWarning
+        expr: pg_transaction_wraparound_transaction_age > 500000000
+        for: 1h
+        labels:
+          severity: warning
+          component: database
+          type: critical_maintenance
+        annotations:
+          summary: "Approaching transaction ID wraparound"
+          description: "Database {{ $labels.database }} transaction age is {{ $value | humanize }}. Wraparound protection will trigger at 1 billion."
+
+      # Transaction wraparound critical
+      - alert: PostgreSQLTransactionWraparoundCritical
+        expr: pg_transaction_wraparound_transaction_age > 1000000000
+        for: 5m
+        labels:
+          severity: critical
+          component: database
+          type: critical_maintenance
+        annotations:
+          summary: "CRITICAL: Transaction ID wraparound imminent!"
+          description: "Database {{ $labels.database }} transaction age is {{ $value | humanize }}. Database will shut down soon to prevent data loss!"
+
+  - name: postgresql_checkpoints
+    interval: 5m
+    rules:
+      # Too many requested checkpoints (should be mostly timed)
+      - alert: PostgreSQLTooManyRequestedCheckpoints
+        expr: |
+          rate(pg_checkpoints_checkpoints_requested[5m]) 
+          / 
+          (rate(pg_checkpoints_checkpoints_requested[5m]) + rate(pg_checkpoints_checkpoints_timed[5m])) > 0.3
+        for: 15m
+        labels:
+          severity: warning
+          component: database
+          type: performance
+        annotations:
+          summary: "Too many requested checkpoints"
+          description: "More than 30% of checkpoints are being requested instead of timed. Consider increasing checkpoint_timeout or max_wal_size."
+
+  - name: postgresql_size
+    interval: 5m
+    rules:
+      # Database size approaching limit
+      - alert: PostgreSQLDatabaseSizeHigh
+        expr: pg_database_size_size_bytes > 85899345920  # 80GB (if disk is 100GB)
+        for: 1h
+        labels:
+          severity: warning
+          component: database
+          type: capacity
+        annotations:
+          summary: "Database size approaching limit"
+          description: "Database {{ $labels.database }} size is {{ $value | humanize1024 }}B. Consider increasing disk size."
+
+  - name: postgresql_indexes
+    interval: 1h
+    rules:
+      # Unused indexes (never scanned but taking up space)
+      - alert: PostgreSQLUnusedIndexes
+        expr: pg_index_usage_scans == 0 and pg_index_usage_size_bytes > 104857600  # > 100MB
+        for: 24h
+        labels:
+          severity: info
+          component: database
+          type: optimization
+        annotations:
+          summary: "Unused index detected"
+          description: "Index {{ $labels.index }} on {{ $labels.schema }}.{{ $labels.table }} has never been scanned and is {{ $value | humanize1024 }}B. Consider dropping it."
+
+  - name: postgresql_connections
+    interval: 30s
+    rules:
+      # Too many idle connections in transaction (holding locks)
+      - alert: PostgreSQLTooManyIdleInTransaction
+        expr: pg_connection_pool_idle_in_transaction > 10
+        for: 5m
+        labels:
+          severity: warning
+          component: database
+          type: performance
+        annotations:
+          summary: "Too many idle connections in transaction"
+          description: "Database {{ $labels.database }} has {{ $value }} idle connections in transaction. These may be holding locks."
+
+  - name: postgresql_replication
+    interval: 1m
+    rules:
+      # Replication lag (if using replicas)
+      - alert: PostgreSQLReplicationLag
+        expr: pg_replication_lag{application_name!=""} > 10000  # 10 seconds
+        for: 5m
+        labels:
+          severity: warning
+          component: database
+          type: replication
+        annotations:
+          summary: "PostgreSQL replication lag high"
+          description: "Replication lag for {{ $labels.application_name }} is {{ $value | humanizeDuration }}"

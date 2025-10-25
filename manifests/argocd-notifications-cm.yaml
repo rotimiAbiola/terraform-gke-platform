@@ -1,0 +1,310 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-notifications-cm
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-notifications
+    app.kubernetes.io/part-of: argocd
+data:
+  # ============================================================================
+  # NOTIFICATION SERVICES - Two separate Slack channels
+  # ============================================================================
+  
+  # Service for deployment notifications (#deployments channel)
+  service.slack-deployments: |
+    token: $slack-token-deployments
+    
+  # Service for health/critical alerts (#critical-alerts channel)
+  service.slack-health: |
+    token: $slack-token-health
+
+  # ============================================================================
+  # NOTIFICATION TEMPLATES
+  # ============================================================================
+
+  # ------------------------------------------------------------------------
+  # DEPLOYMENT STATUS TEMPLATES (for #deployments channel)
+  # ------------------------------------------------------------------------
+  
+  # Template: Sync Succeeded
+  template.app-sync-succeeded: |
+    message: |
+      ✅ **Deployment Successful**
+      
+      **Application:** {{.app.metadata.name}}
+      **Environment:** {{.app.metadata.labels.environment}}
+      **Namespace:** {{.app.spec.destination.namespace}}
+      
+      **Git Commit:** {{.app.status.sync.revision}}
+      **Synced At:** {{.app.status.operationState.finishedAt}}
+      
+      **ArgoCD URL:** {{.context.argocdUrl}}/applications/{{.app.metadata.name}}
+    slack:
+      attachments: |
+        [{
+          "color": "#18BE52",
+          "title": "✅ Deployment Succeeded: {{.app.metadata.name}}",
+          "title_link": "{{.context.argocdUrl}}/applications/{{.app.metadata.name}}",
+          "fields": [
+            {
+              "title": "Application",
+              "value": "{{.app.metadata.name}}",
+              "short": true
+            },
+            {
+              "title": "Environment",
+              "value": "{{.app.metadata.labels.environment}}",
+              "short": true
+            },
+            {
+              "title": "Namespace",
+              "value": "{{.app.spec.destination.namespace}}",
+              "short": true
+            },
+            {
+              "title": "Sync Status",
+              "value": "{{.app.status.sync.status}}",
+              "short": true
+            },
+            {
+              "title": "Git Revision",
+              "value": "{{.app.status.sync.revision}}",
+              "short": false
+            }
+          ],
+          "footer": "ArgoCD Notifications",
+          "footer_icon": "https://cncf-branding.netlify.app/img/projects/argo/icon/color/argo-icon-color.png"
+        }]
+
+  # Template: Sync Failed
+  template.app-sync-failed: |
+    message: |
+      🚨 **DEPLOYMENT FAILED**
+      
+      **Application:** {{.app.metadata.name}}
+      **Environment:** {{.app.metadata.labels.environment}}
+      **Namespace:** {{.app.spec.destination.namespace}}
+      
+      **Error:** {{.app.status.operationState.message}}
+      
+      **Git Repository:** {{.app.spec.source.repoURL}}
+      **Target Revision:** {{.app.spec.source.targetRevision}}
+      **Path:** {{.app.spec.source.path}}
+      
+      **ArgoCD URL:** {{.context.argocdUrl}}/applications/{{.app.metadata.name}}
+      
+      **Action Required:** Check the sync logs and fix immediately.
+    slack:
+      attachments: |
+        [{
+          "color": "#E96D76",
+          "title": "🚨 Deployment Failed: {{.app.metadata.name}}",
+          "title_link": "{{.context.argocdUrl}}/applications/{{.app.metadata.name}}",
+          "fields": [
+            {
+              "title": "Application",
+              "value": "{{.app.metadata.name}}",
+              "short": true
+            },
+            {
+              "title": "Environment",
+              "value": "{{.app.metadata.labels.environment}}",
+              "short": true
+            },
+            {
+              "title": "Namespace",
+              "value": "{{.app.spec.destination.namespace}}",
+              "short": true
+            },
+            {
+              "title": "Sync Status",
+              "value": "{{.app.status.sync.status}}",
+              "short": true
+            },
+            {
+              "title": "Error Message",
+              "value": "{{.app.status.operationState.message}}",
+              "short": false
+            }
+          ],
+          "footer": "ArgoCD Notifications",
+          "footer_icon": "https://cncf-branding.netlify.app/img/projects/argo/icon/color/argo-icon-color.png"
+        }]
+
+  # Template: Sync Running (Optional - can be noisy)
+  template.app-sync-running: |
+    message: |
+      🔄 **Deployment Started**
+      
+      **Application:** {{.app.metadata.name}}
+      **Environment:** {{.app.metadata.labels.environment}}
+      **Revision:** {{.app.status.operationState.operation.sync.revision}}
+    slack:
+      attachments: |
+        [{
+          "color": "#0DADEA",
+          "title": "🔄 Deployment Running: {{.app.metadata.name}}",
+          "title_link": "{{.context.argocdUrl}}/applications/{{.app.metadata.name}}",
+          "fields": [
+            {
+              "title": "Application",
+              "value": "{{.app.metadata.name}}",
+              "short": true
+            },
+            {
+              "title": "Status",
+              "value": "In Progress",
+              "short": true
+            }
+          ],
+          "footer": "ArgoCD Notifications"
+        }]
+
+  # ------------------------------------------------------------------------
+  # HEALTH/ALERT TEMPLATES (for #critical-alerts channel)
+  # ------------------------------------------------------------------------
+  
+  # Template: Health Degraded
+  template.app-health-degraded: |
+    message: |
+      ⚠️ **CRITICAL: Application Health Degraded**
+      
+      **Application:** {{.app.metadata.name}}
+      **Environment:** {{.app.metadata.labels.environment}}
+      **Namespace:** {{.app.spec.destination.namespace}}
+      
+      **Health Status:** {{.app.status.health.status}}
+      **Previous Status:** Healthy
+      
+      **Message:** {{.app.status.health.message}}
+      
+      **ArgoCD URL:** {{.context.argocdUrl}}/applications/{{.app.metadata.name}}
+      
+      **Action Required:** Investigate immediately!
+    slack:
+      attachments: |
+        [{
+          "color": "#F4C030",
+          "title": "⚠️ Health Degraded: {{.app.metadata.name}}",
+          "title_link": "{{.context.argocdUrl}}/applications/{{.app.metadata.name}}",
+          "fields": [
+            {
+              "title": "Application",
+              "value": "{{.app.metadata.name}}",
+              "short": true
+            },
+            {
+              "title": "Health Status",
+              "value": "{{.app.status.health.status}}",
+              "short": true
+            },
+            {
+              "title": "Environment",
+              "value": "{{.app.metadata.labels.environment}}",
+              "short": true
+            },
+            {
+              "title": "Namespace",
+              "value": "{{.app.spec.destination.namespace}}",
+              "short": true
+            },
+            {
+              "title": "Health Message",
+              "value": "{{.app.status.health.message}}",
+              "short": false
+            }
+          ],
+          "footer": "ArgoCD Notifications",
+          "footer_icon": "https://cncf-branding.netlify.app/img/projects/argo/icon/color/argo-icon-color.png"
+        }]
+
+  # Template: App Deleted
+  template.app-deleted: |
+    message: |
+      🗑️ **WARNING: Application Deleted**
+      
+      **Application:** {{.app.metadata.name}}
+      **Namespace:** {{.app.spec.destination.namespace}}
+      
+      **Deleted At:** {{.app.metadata.deletionTimestamp}}
+      
+      **This may be intentional or a mistake!**
+    slack:
+      attachments: |
+        [{
+          "color": "#E96D76",
+          "title": "🗑️ Application Deleted: {{.app.metadata.name}}",
+          "fields": [
+            {
+              "title": "Application",
+              "value": "{{.app.metadata.name}}",
+              "short": true
+            },
+            {
+              "title": "Namespace",
+              "value": "{{.app.spec.destination.namespace}}",
+              "short": true
+            },
+            {
+              "title": "Deleted At",
+              "value": "{{.app.metadata.deletionTimestamp}}",
+              "short": false
+            }
+          ],
+          "footer": "ArgoCD Notifications"
+        }]
+
+  # ============================================================================
+  # NOTIFICATION TRIGGERS - Define when to send notifications
+  # ============================================================================
+  
+  # Trigger: Sync Failed (sends to deployments channel)
+  trigger.on-sync-failed: |
+    - when: app.status.operationState.phase in ['Error', 'Failed']
+      send: [app-sync-failed]
+  
+  # Trigger: Sync Succeeded (sends to deployments channel)
+  trigger.on-sync-succeeded: |
+    - when: app.status.operationState.phase in ['Succeeded']
+      send: [app-sync-succeeded]
+  
+  # Trigger: Sync Running (sends to deployments channel) - OPTIONAL
+  # Commented out by default to avoid noise - uncomment if you want it
+  # trigger.on-sync-running: |
+  #   - when: app.status.operationState.phase in ['Running']
+  #     send: [app-sync-running]
+  
+  # Trigger: Health Degraded (sends to health channel)
+  trigger.on-health-degraded: |
+    - when: app.status.health.status == 'Degraded'
+      send: [app-health-degraded]
+  
+  # Trigger: App Deleted (sends to health channel)
+  trigger.on-deleted: |
+    - when: app.metadata.deletionTimestamp != nil
+      send: [app-deleted]
+
+  # ============================================================================
+  # DEFAULT SUBSCRIPTIONS - Route notifications to specific channels
+  # ============================================================================
+  
+  subscriptions: |
+    # -----------------------------------------------------------------------
+    # DEPLOYMENT STATUS → #deployments channel
+    # -----------------------------------------------------------------------
+    - recipients:
+      - slack-deployments:deployments  # Routes to #deployments channel
+      triggers:
+      - on-sync-succeeded
+      - on-sync-failed
+      # - on-sync-running  # Uncomment if you want deployment start notifications
+    
+    # -----------------------------------------------------------------------
+    # HEALTH/CRITICAL ALERTS → #critical-alerts channel
+    # -----------------------------------------------------------------------
+    - recipients:
+      - slack-health:critical-alerts  # Routes to #critical-alerts channel
+      triggers:
+      - on-health-degraded
+      - on-deleted
