@@ -1,38 +1,11 @@
-# GKE Platform Infrastructure
 
-Production-ready, **fully reusable** Google Kubernetes Engine (GKE) platform with GitOps, monitoring, and secrets management.
+# GKE Infrastructure for an eCommerce Platform
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│  Gateway API (HTTPS Ingress)                                │
-│  argocd.domain → monitoring.domain → vault.domain           │
-└─────────────┬───────────────────────────────────────────────┘
-              │
-┌─────────────┴───────────────────────────────────────────────┐
-│  Observability Layer                                         │
-│  Prometheus + Grafana + Loki + Alerting                     │
-└─────────────┬───────────────────────────────────────────────┘
-              │
-┌─────────────┴───────────────────────────────────────────────┐
-│  Application Layer (GitOps)                                  │
-│  ArgoCD App of Apps → Platform Applications                 │
-└─────────────┬───────────────────────────────────────────────┘
-              │
-┌─────────────┴───────────────────────────────────────────────┐
-│  Platform Services                                           │
-│  ArgoCD + Vault + External Secrets Operator + NGINX Gateway │
-└─────────────┬───────────────────────────────────────────────┘
-              │
-┌─────────────┴───────────────────────────────────────────────┐
-│  Core Infrastructure                                         │
-│  Private GKE + PostgreSQL (HA) + Cloud Storage + DNS        │
-└─────────────┬───────────────────────────────────────────────┘
-              │
-┌─────────────┴───────────────────────────────────────────────┐
-│  Foundation                                                  │
-│  VPC Network + Cloud NAT + Firewall + KMS Encryption       │
-└─────────────────────────────────────────────────────────────┘
-```
+![Infrastructure Architecture](images/eCommerce-infra.jpeg)
+
+Production-ready, **fully reusable** Google Kubernetes Engine (GKE) platform with GitOps, monitoring, and secrets management for an eCommerce application.
+
+
 
 ## 🎯 Key Features
 
